@@ -6,13 +6,13 @@ class N { constructor(t){this.tag=t;this.children=[];this.attrs={};this.listener
   click(){return Promise.all((this.listeners.click||[]).map(f=>f({target:this})));}
   get text(){return this.children.map(c=>c.text!==undefined?c.text:'').join(' ');}
   find(pred,out=[]){ if(pred(this)) out.push(this); this.children.forEach(c=>c.find&&c.find(pred,out)); return out; } }
-const appNode = new N('div'); const listeners = []; const inserted = []; const messages = [];
+const appNode = new N('div'); const listeners = []; const inserted = []; const messages = []; let mode = 'ok'; const injected = [];
 const sandbox = { console, setTimeout, Blob: class{}, URL:Object.assign(function(u){return new (require('url').URL)(u);},{createObjectURL:()=>'x',revokeObjectURL(){}}),
   document:{ getElementById:()=>appNode, createElement:t=>new N(t), createElementNS:(ns,t)=>new N(t), createTextNode:s=>({nodeType:3,text:String(s)}) },
   navigator:{clipboard:{writeText:async()=>{}}}, btoa, location:{pathname:'/chat/x'} };
 sandbox.chrome = { runtime:{onMessage:{addListener:f=>listeners.push(f)}, sendMessage:async()=>{}},
-  tabs:{query:async()=>[{id:1,url:'https://claude.ai/chat/x'}],onActivated:{addListener(){}},onUpdated:{addListener(){}},sendMessage:async(id,m)=>{messages.push(m); if(m.type==='INSERT_TEXT') inserted.push(m.text); return m.type==='INSERT_FILES'?{ok:true,attached:'input'}:{ok:true};}},
-  storage:{session:{get:async()=>({}),set:async()=>{}}} };
+  tabs:{query:async()=>[{id:1,url:'https://claude.ai/chat/x'}],onActivated:{addListener(){}},onUpdated:{addListener(){}},sendMessage:async(id,m)=>{ if(mode==='norecv'){ mode='ok'; throw new Error('Could not establish connection. Receiving end does not exist.'); } messages.push(m); if(mode==='nocomposer') return {ok:false,attached:null,composer:false}; if(m.type==='INSERT_TEXT') inserted.push(m.text); return m.type==='INSERT_FILES'?{ok:true,attached:'input'}:{ok:true};}},
+  scripting:{executeScript:async o=>{injected.push(o);}}, storage:{session:{get:async()=>({}),set:async()=>{}}} };
 sandbox.window = sandbox;
 const ctx = vm.createContext(sandbox);
 const run = (code,f) => new vm.Script(code,{filename:f}).runInContext(ctx);
@@ -41,7 +41,9 @@ const db = vm.runInContext('MFDB', ctx);
   ok(/Choose your task sheet/.test(text()), 'sending requires files');
   appNode.find(n => n.tag==='input' && n.attrs.type==='file')[0].listeners.change[0]({target:{files:[{name:'rubric.pdf',size:2048,type:'application/pdf',arrayBuffer:async()=>new Uint8Array([37,80,68,70]).buffer}]}}); await sleep(20);
   ok(/rubric.pdf/.test(text()), 'chosen file is listed');
+  mode = 'norecv';
   await btn('Send to chat').click(); await sleep(50);
+  ok(injected.length===1 && injected[0].files.includes('content.js'), 'a tab opened before install gets the content script injected');
   const sent = messages[messages.length-1];
   ok(sent && sent.type==='INSERT_FILES' && sent.files.length===1 && sent.files[0].b64==='JVBERg==' && sent.text.includes('labelled mark-pack'), 'files and request are pushed to the chat as base64 plus text');
   ok(/Waiting for the reply/.test(text()), 'import view waits for the reply');
@@ -70,7 +72,9 @@ const db = vm.runInContext('MFDB', ctx);
   await btn('Import').click(); await sleep(20);
   ok(/Import anchors from marked scripts/.test(text()) && /Send to chat/.test(text()), 'anchors import asks for files');
   appNode.find(n => n.tag==='input' && n.attrs.type==='file')[0].listeners.change[0]({target:{files:[{name:'S06_17.pdf',size:1024,type:'application/pdf',arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer}]}}); await sleep(20);
+  mode = 'nocomposer';
   await btn('Send to chat').click(); await sleep(50);
+  ok(/could not find the chat box/.test(text()), 'a page without a composer explains the manual path');
   const sent2 = messages[messages.length-1];
   ok(sent2.type==='INSERT_FILES' && sent2.text.includes('labelled mark-handover') && /Review the anchors below/.test(text()), 'anchor files and request are pushed, then the review view waits');
   await db.setMeta('pendingHandover', { packId: pid, at: 2, data: { pack: pid, rulings: [], anchors: [{student:'S06',score:17,note:'strong'}], notes: [] } });

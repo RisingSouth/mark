@@ -93,11 +93,11 @@
 
   chrome.runtime.onMessage.addListener((msg, _s, send) => {
     if (!msg) return false;
-    if (msg.type === 'INSERT_TEXT') { send({ ok: insert(msg.text) }); return false; }
+    if (msg.type === 'INSERT_TEXT') { send({ ok: insert(msg.text), composer: !!document.querySelector(S.composer) }); return false; }
     if (msg.type === 'INSERT_FILES') {
       let method = null;
       try { method = attach((msg.files || []).map(toFile)); } catch (e) { method = null; }
-      setTimeout(() => send({ ok: insert(msg.text), attached: method }), 500); // let the page register the files first
+      setTimeout(() => send({ ok: insert(msg.text), attached: method, composer: !!document.querySelector(S.composer), fileInput: !!document.querySelector(S.fileInput) }), 500); // let the page register the files first
       return true;
     }
     return false;

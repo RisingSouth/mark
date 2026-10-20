@@ -52,10 +52,21 @@
     catch (e) { toast('Could not copy. Select the text and copy it manually.'); }
   }
 
+  // Talk to the chat tab. If the tab was open before the extension loaded, inject the content script and retry once.
+  async function messageTab(msg) {
+    try {
+      return await chrome.tabs.sendMessage(state.tab.id, msg);
+    } catch (e) {
+      if (!/Receiving end|Could not establish connection/i.test(String((e && e.message) || e))) throw e;
+      await chrome.scripting.executeScript({ target: { tabId: state.tab.id }, files: ['lib/brand.js', 'selectors.js', 'lib/parse.js', 'content.js'] });
+      return await chrome.tabs.sendMessage(state.tab.id, msg);
+    }
+  }
+
   async function insertText(text) {
     if (!state.tab) return copy(text, 'Open claude.ai in this window. Copied instead, paste it into the chat.');
     try {
-      const res = await chrome.tabs.sendMessage(state.tab.id, { type: 'INSERT_TEXT', text });
+      const res = await messageTab({ type: 'INSERT_TEXT', text });
       if (res && res.ok) return toast('Inserted into the composer. Press send when ready.');
     } catch (e) { /* content script not present: fall through */ }
     copy(text, 'Could not reach the chat. Copied instead, paste it into the composer.');
@@ -366,11 +377,16 @@
     if (!state.tab) { toast('Open claude.ai in this window first. Files cannot be copied to the clipboard.'); return false; }
     if (files.reduce((a, f) => a + f.size, 0) > MAX_BYTES) { toast('Those files are over 15 MB in total. Choose smaller ones.'); return false; }
     try {
-      const res = await chrome.tabs.sendMessage(state.tab.id, { type: 'INSERT_FILES', files: await toPayload(files), text });
+      const res = await messageTab({ type: 'INSERT_FILES', files: await toPayload(files), text });
       if (res && res.attached) { toast('Files and request are in the composer. Check the files show as attached, then press send.'); return true; }
       if (res && res.ok) { toast('Request inserted, but the files could not be attached automatically. Attach them in the chat yourself, then press send.'); return true; }
-    } catch (e) { /* fall through */ }
-    toast('Could not reach the chat. Refresh the claude.ai tab and try again.');
+      // Neither worked: most likely the page layout differs from selectors.js. Give the teacher a manual path.
+      await navigator.clipboard.writeText(text).catch(() => {});
+      toast('Mark could not find the chat box on this page (selectors.js needs updating). The request is copied: paste it into the chat and attach your files yourself.');
+      return true;
+    } catch (e) {
+      toast('Could not reach the chat: ' + String((e && e.message) || e));
+    }
     return false;
   }
 
