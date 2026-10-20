@@ -1,5 +1,5 @@
 {
-  "name": "markflow-panel",
+  "name": "mark",
   "version": "0.1.0",
   "private": true,
   "description": "Chrome side panel that adds an assessment workspace beside an AI chat. Local-first.",

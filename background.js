@@ -1,5 +1,5 @@
 /* Service worker: owns captures. The content script only reads the page; this writes to IndexedDB. */
-importScripts('lib/parse.js', 'lib/db.js');
+importScripts('lib/brand.js', 'lib/parse.js', 'lib/db.js');
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

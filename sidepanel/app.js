@@ -107,7 +107,7 @@
 
   // ---------- views ----------
   function header() {
-    return h('header', null, h('div', { class: 'logo' }, svg('M4 8h10M4 16h6M16 14l2.5 2.5L22 11')), h('div', { class: 'brand' }, 'Markflow'));
+    return h('header', null, h('div', { class: 'logo' }, svg('M4 8h10M4 16h6M16 14l2.5 2.5L22 11')), h('div', { class: 'brand' }, MFBrand.name));
   }
 
   function navbar() {
@@ -192,7 +192,7 @@
     return h('details', { class: 'card pad' },
       h('summary', null, 'Set up your Claude Project (once)'),
       h('div', { class: 'col' },
-        h('div', { class: 'small muted' }, 'Paste this into the instructions of the Claude Project you mark in. It keeps replies in a format Markflow can capture.'),
+        h('div', { class: 'small muted' }, 'Paste this into the instructions of the Claude Project you mark in. It keeps replies in a format ' + MFBrand.name + ' can capture.'),
         h('pre', { class: 'copybox' }, P.PROJECT_INSTRUCTIONS),
         h('button', { class: 'btn small', onclick: () => copy(P.PROJECT_INSTRUCTIONS, 'Instructions copied.') }, 'Copy instructions')));
   }
@@ -270,7 +270,7 @@
 
   function backup() {
     const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), packs: state.packs, marks: state.marks }, null, 2)], { type: 'application/json' });
-    download(blob, 'markflow-backup.json');
+    download(blob, MFBrand.slug + '-backup.json');
   }
 
   function download(blob, name) {

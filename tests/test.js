@@ -1,5 +1,6 @@
 // Run with: node tests/test.js   (no dependencies)
 const assert = require('assert');
+const MFBrand = require('../lib/brand.js');
 const MFParse = require('../lib/parse.js');
 const MFCsv = require('../lib/csv.js');
 const MFPrompts = require('../lib/prompts.js');
@@ -13,7 +14,7 @@ let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('ok  ' + name); };
 
 t('captures a valid mark from prose plus a fenced block', () => {
-  const msg = 'S08 uses a normalised schema.\n```markflow\n{ "pack":"pk_abc123","student":"S08","scores":{"C1":4,"C2":3,"C3":4,"C4":3},"total":14,"confidence":"med","flags":["C3 between A2 and A3"],"comment":"Good joins." }\n```\nLet me know.';
+  const msg = 'S08 uses a normalised schema.\n```' + MFBrand.block + '\n{ "pack":"pk_abc123","student":"S08","scores":{"C1":4,"C2":3,"C3":4,"C4":3},"total":14,"confidence":"med","flags":["C3 between A2 and A3"],"comment":"Good joins." }\n```\nLet me know.';
   const r = MFParse.extract(msg, rubric);
   assert.strictEqual(r.marks.length, 1);
   assert.strictEqual(r.marks[0].total, 14);
@@ -54,7 +55,7 @@ t('detects the READY handshake', () => {
 });
 
 t('parses a handover block', () => {
-  const r = MFParse.extract('```markflow-handover\n{"pack":"pk_abc123","rulings":["Accept composite keys if justified."],"anchors":[{"student":"S06","note":"strong C2"}],"notes":[]}\n```', rubric);
+  const r = MFParse.extract('```' + MFBrand.handoverBlock + '\n{"pack":"pk_abc123","rulings":["Accept composite keys if justified."],"anchors":[{"student":"S06","note":"strong C2"}],"notes":[]}\n```', rubric);
   assert.strictEqual(r.handovers.length, 1);
   assert.strictEqual(r.handovers[0].rulings.length, 1);
   assert.strictEqual(r.handovers[0].anchors[0].student, 'S06');
@@ -76,7 +77,7 @@ t('preamble is deterministic and carries the handshake', () => {
   const marks = [{ student: 'S01', scores: { C1: 5, C2: 4, C3: 4, C4: 5 }, total: 18, of: 20 }];
   const a = MFPrompts.preamble(pack, marks), b = MFPrompts.preamble(pack, marks);
   assert.strictEqual(a, b);
-  assert.ok(a.startsWith('MARKFLOW PACK pk_abc123'));
+  assert.ok(a.startsWith(MFBrand.tag + ' PACK pk_abc123'));
   assert.ok(a.includes('S01 18/20'));
   assert.ok(a.trim().endsWith('Reply only with: READY pk_abc123 ' + MFPrompts.PROTOCOL));
 });

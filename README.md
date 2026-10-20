@@ -1,4 +1,4 @@
-# Markflow Panel
+# Mark
 
 A Chrome side panel that sits beside an AI chat and adds what the chat lacks: an assessment pack (task, rubric, calibration anchors, rulings) that travels across chats, and a local markbook built from the marks the chat produces.
 
@@ -19,7 +19,7 @@ MVP, v0.1. Built without access to a live browser, so the DOM selectors for the 
 1. Panel: **Create your first pack**, then fill in the task, rubric (IDs like C1, C2 with a max each) and, ideally, a few anchors.
 2. Home: open **Set up your Claude Project**, copy the instructions into your Claude Project's instructions. Do this once.
 3. In a chat inside that Project: **Load pack**, press send. When Claude replies `READY ...` the panel shows *Chat configured*.
-4. Drop in a script, press **Mark**, press send. The reply's `markflow` block is validated and saved; a green chip appears under the reply.
+4. Drop in a script, press **Mark**, press send. The reply's `mark` block is validated and saved; a green chip appears under the reply.
 5. **Markbook**: review, edit, accept, export CSV.
 6. Chat getting long or drifting: **Hand over**, send, review what was captured, save, then load the pack in a fresh chat.
 

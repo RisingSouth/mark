@@ -11,9 +11,9 @@
 
   function chip(el, kind, text) {
     let c = el.nextElementSibling;
-    if (!(c && c.dataset && c.dataset.markflowChip)) {
+    if (!(c && c.dataset && c.dataset.markChip)) {
       c = document.createElement('div');
-      c.dataset.markflowChip = '1';
+      c.dataset.markChip = '1';
       el.insertAdjacentElement('afterend', c);
     }
     const ok = kind === 'ok';
@@ -43,11 +43,11 @@
         chip(el, 'ok', 'Saved to markbook · ' + res.saved.map(s => s.student + ' ' + s.total + (s.of ? '/' + s.of : '')).join(', '));
       } else if (res.invalid && res.invalid.length) {
         const i = res.invalid[0];
-        chip(el, 'warn', 'Markflow: ' + i.student + ' not saved · ' + i.errors[0]);
+        chip(el, 'warn', MFBrand.name + ': ' + i.student + ' not saved · ' + i.errors[0]);
       } else if (res.handover) {
-        chip(el, 'ok', 'Handover captured · review it in the Markflow panel');
+        chip(el, 'ok', 'Handover captured · review it in the ' + MFBrand.name + ' panel');
       } else if (res.noPack) {
-        chip(el, 'warn', 'Markflow: create a pack in the panel to save marks');
+        chip(el, 'warn', MFBrand.name + ': create a pack in the panel to save marks');
       }
     }
   }

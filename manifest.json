@@ -1,17 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Markflow Panel",
+  "name": "Mark",
   "version": "0.1.0",
   "description": "An assessment workspace beside your AI chat. Rubrics, anchors and rulings travel across chats; marks are captured locally.",
   "permissions": ["storage", "sidePanel"],
   "host_permissions": ["https://claude.ai/*"],
   "background": { "service_worker": "background.js" },
   "side_panel": { "default_path": "sidepanel/index.html" },
-  "action": { "default_title": "Open Markflow panel" },
+  "action": { "default_title": "Open Mark panel" },
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["selectors.js", "lib/parse.js", "content.js"],
+      "js": ["lib/brand.js", "selectors.js", "lib/parse.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

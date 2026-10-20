@@ -2,7 +2,7 @@
 
 The model is asked to end replies with a fenced code block. The extension does not depend on the fence or its label; it finds top-level JSON objects in the reply text, so it still works if the host renders code blocks differently.
 
-## `markflow` (one mark)
+## `mark` (one mark)
 
 ```json
 {
@@ -24,7 +24,7 @@ Rules enforced before saving:
 - `total`, if present, equals the sum of `scores`. (The stored total is always the computed sum.)
 - `confidence` is `low`, `med` or `high` (default `med`). A `low` confidence or any `flags` puts the mark in the review queue.
 
-## `markflow-handover`
+## `mark-handover`
 
 ```json
 {
