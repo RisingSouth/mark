@@ -1,0 +1,10 @@
+{
+  "name": "markflow-panel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome side panel that adds an assessment workspace beside an AI chat. Local-first.",
+  "scripts": {
+    "test": "node tests/test.js",
+    "check": "node --check background.js && node --check content.js && node --check sidepanel/app.js && node --check lib/db.js"
+  }
+}
