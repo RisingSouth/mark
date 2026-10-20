@@ -5,7 +5,8 @@
 
   const state = {
     view: 'home', packs: [], packId: null, marks: [], pending: null,
-    tab: null, ready: null, draft: null, sel: null, toast: '', student: ''
+    tab: null, ready: null, draft: null, sel: null, toast: '', student: '',
+    pendingImport: null, importDraft: null, handoverMode: 'handover'
   };
 
   // ---------- helpers ----------
@@ -74,6 +75,7 @@
     const all = await MFDB.getAll('marks');
     state.marks = all.filter(m => m.packId === state.packId).sort(byStudent);
     state.pending = (await MFDB.getMeta('pendingHandover')) || null;
+    state.pendingImport = (await MFDB.getMeta('pendingImport')) || null;
     await refreshTab();
     render();
   }
@@ -113,7 +115,7 @@
   function navbar() {
     const tabs = [['home', 'Home'], ['pack', 'Pack'], ['markbook', 'Markbook']];
     return h('nav', null, tabs.map(([v, label]) => h('button', {
-      'aria-current': state.view === v || (v === 'home' && state.view === 'handover') ? 'page' : null,
+      'aria-current': state.view === v || (v === 'home' && (state.view === 'handover' || state.view === 'import')) ? 'page' : null,
       onclick: () => go(v)
     }, label)));
   }
@@ -151,7 +153,8 @@
         h('div', { class: 'card pad col' },
           h('b', null, 'Welcome'),
           h('div', { class: 'muted' }, 'A pack holds the task, rubric, anchors and rulings for one assessment. It travels with you across chats.'),
-          h('button', { class: 'btn primary', onclick: () => { state.view = 'newpack'; render(); } }, 'Create your first pack')),
+          h('button', { class: 'btn primary', onclick: startImport }, 'Import rubric from files'),
+          h('button', { class: 'btn', onclick: () => { state.view = 'newpack'; render(); } }, 'Build a pack by hand')),
         setupCard()
       ];
     }
@@ -172,7 +175,7 @@
         h('div', { class: 'line-row' }, h('span', null, 'Marked'), h('span', { class: 'muted' }, state.marks.length + ' captured'))),
       h('div', { class: 'btns' },
         h('button', { class: 'btn primary', onclick: () => insertText(P.preamble(p, state.marks)) }, 'Load pack'),
-        h('button', { class: 'btn', onclick: () => { insertText(P.handoverPrompt(p)); state.view = 'handover'; render(); } }, 'Hand over')),
+        h('button', { class: 'btn', onclick: () => { insertText(P.handoverPrompt(p)); state.handoverMode = 'handover'; state.view = 'handover'; render(); } }, 'Hand over')),
       h('div', { class: 'small muted' }, 'Both insert text into the composer. Nothing is sent until you press send.'),
       h('div', { class: 'col' },
         h('div', { class: 'label' }, 'Insert a prompt'),
@@ -200,7 +203,9 @@
   function newPackView() {
     const input = h('input', { 'aria-label': 'Pack name', placeholder: 'e.g. Y11 Database Task' });
     return [
+      importCard(),
       h('div', { class: 'card pad col' },
+        h('div', { class: 'label' }, 'Or build by hand'),
         h('label', null, 'Pack name', input),
         h('div', { class: 'btns' },
           h('button', { class: 'btn', onclick: () => { state.view = 'home'; render(); } }, 'Cancel'),
@@ -243,7 +248,9 @@
 
       h('div', { class: 'card' },
         h('div', { class: 'row pad' }, h('span', { class: 'label' }, 'Calibration anchors · ' + d.anchors.length),
-          h('button', { class: 'link', onclick: () => { d.anchors.push({ id: 'A' + (d.anchors.length + 1), label: '', score: '', note: '' }); reRender(); } }, 'Add')),
+          h('div', null,
+            h('button', { class: 'link', onclick: startAnchors }, 'Import'),
+            h('button', { class: 'link', onclick: () => { d.anchors.push({ id: 'A' + (d.anchors.length + 1), label: '', score: '', note: '' }); reRender(); } }, 'Add'))),
         d.anchors.map((a, i) => h('div', { class: 'pad col', style: 'border-top:1px solid var(--line-soft)' },
           h('div', { class: 'btns' },
             field('Label', h('input', { value: a.label, oninput: e => { a.label = e.target.value; } })),
@@ -336,18 +343,103 @@
       }, m.decision === 'accepted' ? 'Update and accept' : 'Accept mark'));
   }
 
+  function startImport() {
+    insertText(P.importRubricPrompt());
+    state.importDraft = null; state.view = 'import'; render();
+  }
+
+  function startAnchors() {
+    insertText(P.importAnchorsPrompt(pack()));
+    state.handoverMode = 'anchors'; state.view = 'handover'; render();
+  }
+
+  function importCard() {
+    return h('div', { class: 'card pad col' },
+      h('b', null, 'Import from your documents'),
+      h('div', { class: 'small muted' }, 'Attach your task sheet and rubric (PDF or Word) to the chat. The reply is turned into a pack you review before saving.'),
+      h('button', { class: 'btn primary', onclick: startImport }, 'Import rubric from files'));
+  }
+
+  function importView() {
+    const pend = state.pendingImport;
+    const steps = h('div', { class: 'card pad col' },
+      h('b', null, 'Import rubric from your documents'),
+      h('ol', { style: 'margin:0;padding-left:18px' },
+        h('li', null, 'Attach your task sheet and rubric (PDF or Word) to the chat.'),
+        h('li', null, 'Send the request that was just inserted into the composer.'),
+        h('li', null, 'Review what was extracted below, fix anything, then save.')),
+      h('button', { class: 'btn small', onclick: () => insertText(P.importRubricPrompt()) }, 'Insert the request again'));
+    if (!pend) return [steps, h('div', { class: 'small muted' }, 'Waiting for the reply. It appears here automatically.')];
+
+    if (!state.importDraft || state.importDraft.at !== pend.at) {
+      state.importDraft = { at: pend.at, d: JSON.parse(JSON.stringify(pend.data.pack)), confirmed: false };
+    }
+    const id = state.importDraft, d = id.d;
+    const sum = d.criteria.reduce((a, c) => a + (Number(c.max) || 0), 0);
+    const mismatch = d.statedTotal == null
+      ? 'The document total was not reported, so this total could not be cross-checked.'
+      : (d.statedTotal !== sum ? 'Criteria add up to ' + sum + ' but the document states ' + d.statedTotal + '.' : null);
+    const field = (label, el) => h('label', null, label, el);
+
+    return [
+      steps,
+      h('div', { class: 'card pad col' },
+        field('Pack name', h('input', { value: d.name, oninput: e => { d.name = e.target.value; } })),
+        field('Task description', h('textarea', { value: d.task, oninput: e => { d.task = e.target.value; } }))),
+      h('div', { class: 'card' },
+        h('div', { class: 'row pad' }, h('span', { class: 'label' }, 'Criteria · ' + d.criteria.length),
+          h('button', { class: 'link', onclick: () => { d.criteria.push({ id: 'C' + (d.criteria.length + 1), name: '', max: 5, descriptor: '' }); render(); } }, 'Add')),
+        d.criteria.map((c, i) => h('div', { class: 'pad col', style: 'border-top:1px solid var(--line-soft)' },
+          h('div', { class: 'btns' },
+            field('ID', h('input', { value: c.id, class: 'mono', oninput: e => { c.id = e.target.value.trim(); } })),
+            field('Max', h('input', { type: 'number', min: '1', value: String(c.max), onchange: e => { c.max = Number(e.target.value) || 0; render(); } }))),
+          field('Name', h('input', { value: c.name, oninput: e => { c.name = e.target.value; } })),
+          field('What a good answer shows', h('textarea', { value: c.descriptor, oninput: e => { c.descriptor = e.target.value; } })),
+          d.criteria.length > 1 ? h('button', { class: 'link danger', style: 'align-self:flex-start', onclick: () => { d.criteria.splice(i, 1); render(); } }, 'Remove criterion') : null))),
+      h('div', { class: mismatch ? 'notice' : 'status ok' },
+        h('b', null, 'Total: ' + sum + (d.statedTotal != null ? ' (document states ' + d.statedTotal + ')' : '')),
+        mismatch ? h('div', null, mismatch + ' Check it against your document.') : h('div', { class: 'small' }, 'Matches the total in your document.'),
+        mismatch ? h('label', { style: 'flex-direction:row;align-items:flex-start;gap:10px;color:inherit;margin-top:8px' },
+          h('input', { type: 'checkbox', checked: id.confirmed, style: 'width:20px;min-height:20px;margin-top:2px', onchange: e => { id.confirmed = e.target.checked; } }),
+          'I have checked this against my document') : null),
+      h('button', {
+        class: 'btn primary', onclick: async () => {
+          if (!d.name.trim()) return toast('Give the pack a name.');
+          const chk = MFParse.validatePack({ criteria: d.criteria, statedTotal: d.statedTotal });
+          if (chk.errors.length) return toast(chk.errors[0]);
+          if (mismatch && !id.confirmed) return toast('Tick the box to confirm the total, or fix the marks.');
+          const p = newPack(d.name.trim());
+          p.task = d.task;
+          p.rubric = d.criteria.map(c => ({ id: c.id, name: c.name, max: c.max, descriptor: c.descriptor || '' }));
+          await savePack(p);
+          await MFDB.setMeta('pendingImport', null);
+          state.importDraft = null;
+          await load();
+          go('pack');
+          toast('Pack created. Add anchors next if you have marked examples.');
+        }
+      }, 'Save as new pack'),
+      h('button', { class: 'btn', onclick: async () => { await MFDB.setMeta('pendingImport', null); state.importDraft = null; await load(); } }, 'Discard')
+    ];
+  }
+
   function handoverView() {
     const p = pack();
     const pend = state.pending && p && state.pending.packId === p.id ? state.pending : null;
     if (!p) return [h('div', { class: 'muted' }, 'Create a pack first.')];
 
+    const anchorsMode = state.handoverMode === 'anchors';
     const steps = h('div', { class: 'card pad col' },
-      h('b', null, 'Hand over this chat'),
+      h('b', null, anchorsMode ? 'Import anchors from marked scripts' : 'Hand over this chat'),
       h('ol', { style: 'margin:0;padding-left:18px' },
-        h('li', null, 'Send the handover request that was just inserted into the composer.'),
-        h('li', null, 'When Claude replies, review what was captured below.'),
-        h('li', null, 'Save the items you want, open a new chat and load the pack.')),
-      h('button', { class: 'btn small', onclick: () => insertText(P.handoverPrompt(p)) }, 'Insert the request again'));
+        anchorsMode
+          ? [h('li', null, 'Attach two or three scripts you have already marked. Put the student ID and total in each filename.'),
+             h('li', null, 'Send the request that was just inserted into the composer.'),
+             h('li', null, 'Review the anchors below and save the ones you want.')]
+          : [h('li', null, 'Send the handover request that was just inserted into the composer.'),
+             h('li', null, 'When Claude replies, review what was captured below.'),
+             h('li', null, 'Save the items you want, open a new chat and load the pack.')]),
+      h('button', { class: 'btn small', onclick: () => insertText(anchorsMode ? P.importAnchorsPrompt(p) : P.handoverPrompt(p)) }, 'Insert the request again'));
 
     if (!pend) return [steps, h('div', { class: 'small muted' }, 'Waiting for a handover reply. It appears here automatically.')];
 
@@ -362,20 +454,20 @@
       h('div', { class: 'card pad col' },
         h('div', { class: 'label' }, 'New from this chat'),
         checks(d.rulings, keepR, x => x, 'Ruling'),
-        checks(d.anchors, keepA, a => (a.student ? a.student + ': ' : '') + a.note, 'Anchor'),
+        checks(d.anchors, keepA, a => (a.student || 'Exemplar') + (a.score !== '' && a.score != null ? ' (' + a.score + ')' : '') + ': ' + a.note, 'Anchor'),
         !d.rulings.length && !d.anchors.length ? h('div', { class: 'muted' }, 'Nothing new was reported.') : null),
       h('div', { class: 'notice' }, 'Summaries are written by the model. Check each ruling reads the way you meant it before saving.'),
       h('button', {
         class: 'btn primary', onclick: async () => {
           const np = JSON.parse(JSON.stringify(p));
           d.rulings.forEach((t, i) => { if (keepR[i]) np.rulings.push({ id: 'R' + (np.rulings.length + 1), text: t }); });
-          d.anchors.forEach((a, i) => { if (keepA[i]) np.anchors.push({ id: 'A' + (np.anchors.length + 1), label: a.student || 'Exemplar', score: '', note: a.note }); });
+          d.anchors.forEach((a, i) => { if (keepA[i]) np.anchors.push({ id: 'A' + (np.anchors.length + 1), label: a.student || 'Exemplar', score: a.score == null ? '' : a.score, note: a.note }); });
           np.version = (np.version || 1) + 1;
           await savePack(np);
           await MFDB.setMeta('pendingHandover', null);
           await load();
           state.view = 'home'; render();
-          await insertText(P.preamble(pack(), state.marks));
+          if (!anchorsMode) await insertText(P.preamble(pack(), state.marks));
         }
       }, 'Save selected and insert new-chat prompt'),
       h('button', { class: 'btn', onclick: async () => { await MFDB.setMeta('pendingHandover', null); await load(); } }, 'Discard')
@@ -384,7 +476,7 @@
 
   // ---------- render ----------
   function render() {
-    const views = { home: homeView, pack: packView, markbook: markbookView, handover: handoverView, newpack: newPackView };
+    const views = { home: homeView, pack: packView, markbook: markbookView, handover: handoverView, newpack: newPackView, import: importView };
     const body = (views[state.view] || homeView)();
     const p = pack();
     root.replaceChildren(

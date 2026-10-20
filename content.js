@@ -31,7 +31,7 @@
       const text = el.innerText || '';
       if (seen.get(el) === text) continue;
       seen.set(el, text);
-      if (!/READY\s+pk_|"scores"|"rulings"|"anchors"/.test(text)) continue;
+      if (!/READY\s+pk_|"scores"|"rulings"|"anchors"|"criteria"/.test(text)) continue;
 
       let res;
       try {
@@ -44,6 +44,8 @@
       } else if (res.invalid && res.invalid.length) {
         const i = res.invalid[0];
         chip(el, 'warn', MFBrand.name + ': ' + i.student + ' not saved · ' + i.errors[0]);
+      } else if (res.packImport) {
+        chip(el, 'ok', 'Rubric captured \u00b7 review it in the ' + MFBrand.name + ' panel');
       } else if (res.handover) {
         chip(el, 'ok', 'Handover captured · review it in the ' + MFBrand.name + ' panel');
       } else if (res.noPack) {

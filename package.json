@@ -4,7 +4,7 @@
   "private": true,
   "description": "Chrome side panel that adds an assessment workspace beside an AI chat. Local-first.",
   "scripts": {
-    "test": "node tests/test.js",
+    "test": "node tests/test.js && node tests/panel-smoke.js",
     "check": "node --check background.js && node --check content.js && node --check sidepanel/app.js && node --check lib/db.js"
   }
 }

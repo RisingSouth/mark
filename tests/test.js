@@ -90,4 +90,32 @@ t('the format example inside the preamble round-trips through the parser', () =>
   assert.strictEqual(r.marks.length, 1);
 });
 
+t('captures a rubric import and cross-checks the stated total', () => {
+  const ok = MFParse.extract('```mark-pack\n{"name":"DB Task","task":"Design a DB","statedTotal":20,"criteria":[{"id":"C1","name":"Schema","max":10,"descriptor":"a"},{"id":"C2","name":"Queries","max":10,"descriptor":"b"}]}\n```', null);
+  assert.strictEqual(ok.imports.length, 1);
+  assert.strictEqual(ok.imports[0].pack.criteria.length, 2);
+  assert.deepStrictEqual(MFParse.validatePack(ok.imports[0].pack).warnings, []);
+  const bad = MFParse.validatePack({ statedTotal: 25, criteria: [{ id: 'C1', name: 'A', max: 10 }, { id: 'C2', name: 'B', max: 10 }] });
+  assert.ok(/add up to 20 but the document states 25/.test(bad.warnings[0]));
+  const none = MFParse.validatePack({ statedTotal: null, criteria: [{ id: 'C1', name: 'A', max: 5 }] });
+  assert.ok(/could not be cross-checked/.test(none.warnings[0]));
+});
+
+t('rejects a rubric with duplicate ids, empty names or bad maxes', () => {
+  const r = MFParse.extract('{"criteria":[{"id":"C1","name":"A","max":5},{"id":"C1","name":"","max":0}]}', null);
+  assert.strictEqual(r.imports.length, 0);
+  const e = r.invalid[0].errors.join('|');
+  assert.ok(/duplicate id C1/.test(e) && /name missing/.test(e) && /max must be/.test(e));
+});
+
+t('import prompts embed the block labels and their examples parse', () => {
+  const rp = MFPrompts.importRubricPrompt();
+  assert.ok(rp.includes('labelled ' + MFBrand.packBlock));
+  const r = MFParse.extract(rp.split('\n').find(l => l.startsWith('{"name"')), null);
+  assert.strictEqual(r.imports.length, 1);
+  const ap = MFPrompts.importAnchorsPrompt(pack);
+  const h = MFParse.extract(ap.split('\n').find(l => l.startsWith('{"pack"')), rubric);
+  assert.strictEqual(h.handovers[0].anchors[0].score, 17);
+});
+
 console.log('\n' + n + ' tests passed');

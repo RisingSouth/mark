@@ -37,6 +37,25 @@ Rules enforced before saving:
 
 Nothing from a handover is saved to the pack until the teacher reviews it and chooses what to keep. Saving bumps the pack version.
 
+## `mark-pack` (rubric import)
+
+```json
+{
+  "name": "Database Task",
+  "task": "Design a relational database for a school library.",
+  "statedTotal": 20,
+  "criteria": [{ "id": "C1", "name": "Schema design", "max": 5, "descriptor": "Top band: ..." }]
+}
+```
+
+Requested by **Import rubric from files**. The teacher attaches the task sheet and rubric to the chat; the reply is captured into a review screen and nothing is saved until the teacher accepts it.
+
+- Structural errors block saving: no criteria, duplicate or malformed IDs, missing names, `max` not a whole number from 1 to 100.
+- `statedTotal` is the total printed in the document. If it is missing, or differs from the sum of the criterion maxes, the review screen warns and the teacher must tick a confirmation before saving.
+- Level bands across columns are one criterion with `max` set to the top of the range; levels live in `descriptor`.
+
+Anchors are imported with the `mark-handover` format below, using each anchor's `score`.
+
 ## Handshake
 
 The pack preamble ends with `Reply only with: READY <pack-id> <protocol>`. The panel shows *Chat configured* once it sees that exact reply in the current chat.

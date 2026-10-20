@@ -11,23 +11,32 @@ function broadcast() {
 
 async function handleCapture(msg) {
   const packs = await MFDB.getAll('packs');
-  const out = { saved: [], invalid: [], handover: false, ready: false, noPack: false };
-  if (!packs.length) { out.noPack = true; return out; }
+  const out = { saved: [], invalid: [], handover: false, ready: false, noPack: false, packImport: false };
 
   const activeId = await MFDB.getMeta('activePackId');
   const hinted = [...(msg.text || '').matchAll(/"pack"\s*:\s*"(pk_[a-z0-9]+)"/gi)].map(m => m[1].toLowerCase());
-  const pack = packs.find(p => hinted.includes(p.id)) || packs.find(p => p.id === activeId) || packs[0];
+  const pack = packs.find(p => hinted.includes(p.id)) || packs.find(p => p.id === activeId) || packs[0] || null;
 
-  const r = MFParse.extract(msg.text, pack.rubric);
-
-  for (const m of r.marks) {
-    const res = await MFDB.saveMark(pack.id, m);
-    out.saved.push({ student: m.student, total: m.total, of: m.of, status: res.status });
-  }
+  const r = MFParse.extract(msg.text, pack ? pack.rubric : null);
   out.invalid = r.invalid;
 
+  if (r.marks.length) {
+    if (!pack) out.noPack = true;
+    else {
+      for (const m of r.marks) {
+        const res = await MFDB.saveMark(pack.id, m);
+        out.saved.push({ student: m.student, total: m.total, of: m.of, status: res.status });
+      }
+    }
+  }
+
+  if (r.imports.length) {
+    await MFDB.setMeta('pendingImport', { at: Date.now(), data: r.imports[0] });
+    out.packImport = true;
+  }
+
   if (r.handovers.length) {
-    await MFDB.setMeta('pendingHandover', { packId: pack.id, at: Date.now(), data: r.handovers[0] });
+    await MFDB.setMeta('pendingHandover', { packId: pack ? pack.id : null, at: Date.now(), data: r.handovers[0] });
     out.handover = true;
   }
 
@@ -37,7 +46,7 @@ async function handleCapture(msg) {
     out.ready = true;
   }
 
-  if (out.saved.length || out.handover || out.ready || out.invalid.length) broadcast();
+  if (out.saved.length || out.handover || out.ready || out.packImport || out.invalid.length) broadcast();
   return out;
 }
 
