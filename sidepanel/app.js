@@ -6,7 +6,8 @@
   const state = {
     view: 'home', packs: [], packId: null, marks: [], pending: null,
     tab: null, ready: null, draft: null, sel: null, toast: '', student: '',
-    pendingImport: null, importDraft: null, handoverMode: 'handover'
+    pendingImport: null, importDraft: null, handoverMode: 'handover',
+    importIntent: null, importName: '', importFiles: [], anchorFiles: []
   };
 
   // ---------- helpers ----------
@@ -76,6 +77,7 @@
     state.marks = all.filter(m => m.packId === state.packId).sort(byStudent);
     state.pending = (await MFDB.getMeta('pendingHandover')) || null;
     state.pendingImport = (await MFDB.getMeta('pendingImport')) || null;
+    state.importIntent = (await MFDB.getMeta('importIntent')) || null;
     await refreshTab();
     render();
   }
@@ -153,8 +155,7 @@
         h('div', { class: 'card pad col' },
           h('b', null, 'Welcome'),
           h('div', { class: 'muted' }, 'A pack holds the task, rubric, anchors and rulings for one assessment. It travels with you across chats.'),
-          h('button', { class: 'btn primary', onclick: startImport }, 'Import rubric from files'),
-          h('button', { class: 'btn', onclick: () => { state.view = 'newpack'; render(); } }, 'Build a pack by hand')),
+          h('button', { class: 'btn primary', onclick: () => { state.view = 'newpack'; render(); } }, 'Create your first pack')),
         setupCard()
       ];
     }
@@ -200,25 +201,28 @@
         h('button', { class: 'btn small', onclick: () => copy(P.PROJECT_INSTRUCTIONS, 'Instructions copied.') }, 'Copy instructions')));
   }
 
+  async function createEmpty() {
+    const name = state.importName.trim();
+    if (!name) return toast('Give the pack a name.');
+    const p = newPack(name);
+    await savePack(p);
+    state.importName = ''; state.importFiles = [];
+    await load();
+    go('pack');
+  }
+
   function newPackView() {
-    const input = h('input', { 'aria-label': 'Pack name', placeholder: 'e.g. Y11 Database Task' });
     return [
-      importCard(),
       h('div', { class: 'card pad col' },
-        h('div', { class: 'label' }, 'Or build by hand'),
-        h('label', null, 'Pack name', input),
+        h('label', null, 'Pack name', h('input', { 'aria-label': 'Pack name', placeholder: 'e.g. Y11 Database Task', value: state.importName, oninput: e => { state.importName = e.target.value; } })),
+        fileBox(state.importFiles, 'Your task sheet and rubric (PDF or Word). They are attached to the chat for you.'),
+        h('button', { class: 'btn primary', onclick: sendRubric }, 'Send to chat'),
+        h('div', { class: 'small muted' }, 'This attaches the files and writes the request in the composer. You press send, then review what comes back before anything is saved.')),
+      h('div', { class: 'card pad col' },
+        h('div', { class: 'label' }, 'Or start with an empty pack'),
         h('div', { class: 'btns' },
           h('button', { class: 'btn', onclick: () => { state.view = 'home'; render(); } }, 'Cancel'),
-          h('button', {
-            class: 'btn primary', onclick: async () => {
-              const name = input.value.trim();
-              if (!name) return toast('Give the pack a name.');
-              const p = newPack(name);
-              await savePack(p);
-              await load();
-              go('pack');
-            }
-          }, 'Create')))
+          h('button', { class: 'btn', onclick: createEmpty }, 'Create empty pack')))
     ];
   }
 
@@ -249,7 +253,7 @@
       h('div', { class: 'card' },
         h('div', { class: 'row pad' }, h('span', { class: 'label' }, 'Calibration anchors · ' + d.anchors.length),
           h('div', null,
-            h('button', { class: 'link', onclick: startAnchors }, 'Import'),
+            h('button', { class: 'link', onclick: () => { state.anchorFiles = []; state.view = 'anchorfiles'; render(); } }, 'Import'),
             h('button', { class: 'link', onclick: () => { d.anchors.push({ id: 'A' + (d.anchors.length + 1), label: '', score: '', note: '' }); reRender(); } }, 'Add'))),
         d.anchors.map((a, i) => h('div', { class: 'pad col', style: 'border-top:1px solid var(--line-soft)' },
           h('div', { class: 'btns' },
@@ -343,21 +347,70 @@
       }, m.decision === 'accepted' ? 'Update and accept' : 'Accept mark'));
   }
 
-  function startImport() {
-    insertText(P.importRubricPrompt());
-    state.importDraft = null; state.view = 'import'; render();
+  const MAX_BYTES = 15 * 1024 * 1024;
+  const fmtSize = n => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(1) + ' MB');
+
+  async function toPayload(files) {
+    const out = [];
+    for (const f of files) {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      out.push({ name: f.name, type: f.type || 'application/octet-stream', b64: btoa(bin) });
+    }
+    return out;
   }
 
-  function startAnchors() {
-    insertText(P.importAnchorsPrompt(pack()));
-    state.handoverMode = 'anchors'; state.view = 'handover'; render();
+  // Attach files to the chat's composer and insert the request text. Never sends.
+  async function sendFiles(files, text) {
+    if (!state.tab) { toast('Open claude.ai in this window first. Files cannot be copied to the clipboard.'); return false; }
+    if (files.reduce((a, f) => a + f.size, 0) > MAX_BYTES) { toast('Those files are over 15 MB in total. Choose smaller ones.'); return false; }
+    try {
+      const res = await chrome.tabs.sendMessage(state.tab.id, { type: 'INSERT_FILES', files: await toPayload(files), text });
+      if (res && res.attached) { toast('Files and request are in the composer. Check the files show as attached, then press send.'); return true; }
+      if (res && res.ok) { toast('Request inserted, but the files could not be attached automatically. Attach them in the chat yourself, then press send.'); return true; }
+    } catch (e) { /* fall through */ }
+    toast('Could not reach the chat. Refresh the claude.ai tab and try again.');
+    return false;
   }
 
-  function importCard() {
-    return h('div', { class: 'card pad col' },
-      h('b', null, 'Import from your documents'),
-      h('div', { class: 'small muted' }, 'Attach your task sheet and rubric (PDF or Word) to the chat. The reply is turned into a pack you review before saving.'),
-      h('button', { class: 'btn primary', onclick: startImport }, 'Import rubric from files'));
+  function fileBox(list, hint) {
+    const input = h('input', {
+      type: 'file', multiple: true, accept: '.pdf,.doc,.docx,.txt,.md,.rtf,.png,.jpg,.jpeg', style: 'display:none',
+      onchange: e => { list.push(...Array.from(e.target.files || [])); render(); }
+    });
+    return h('div', { class: 'col' },
+      h('div', { class: 'label' }, 'Files'),
+      h('div', { class: 'small muted' }, hint),
+      input,
+      h('button', { class: 'btn', onclick: () => input.click() }, list.length ? 'Add more files' : 'Choose files'),
+      list.map((f, i) => h('div', { class: 'row small' },
+        h('span', { class: 'mono', style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, f.name + '  ' + fmtSize(f.size)),
+        h('button', { class: 'link danger', 'aria-label': 'Remove ' + f.name, onclick: () => { list.splice(i, 1); render(); } }, 'Remove'))));
+  }
+
+  async function sendRubric() {
+    const name = state.importName.trim();
+    if (!name) return toast('Give the pack a name.');
+    if (!state.importFiles.length) return toast('Choose your task sheet and rubric first.');
+    if (!(await sendFiles(state.importFiles, P.importRubricPrompt()))) return;
+    await MFDB.setMeta('importIntent', { name, at: Date.now() });
+    state.importIntent = { name }; state.importDraft = null; state.view = 'import'; render();
+  }
+
+  function anchorFilesView() {
+    const p = pack();
+    if (!p) return [h('div', { class: 'muted' }, 'Create a pack first.')];
+    return [h('div', { class: 'card pad col' },
+      h('b', null, 'Import anchors from marked scripts'),
+      fileBox(state.anchorFiles, 'Two or three scripts you have already marked. Put the student ID and total in each filename, for example S06_17.pdf. These are student work, so remove names first.'),
+      h('button', {
+        class: 'btn primary', onclick: async () => {
+          if (!state.anchorFiles.length) return toast('Choose at least one marked script.');
+          if (await sendFiles(state.anchorFiles, P.importAnchorsPrompt(p))) { state.handoverMode = 'anchors'; state.view = 'handover'; render(); }
+        }
+      }, 'Send to chat'),
+      h('button', { class: 'btn', onclick: () => go('pack') }, 'Back to pack'))];
   }
 
   function importView() {
@@ -365,14 +418,15 @@
     const steps = h('div', { class: 'card pad col' },
       h('b', null, 'Import rubric from your documents'),
       h('ol', { style: 'margin:0;padding-left:18px' },
-        h('li', null, 'Attach your task sheet and rubric (PDF or Word) to the chat.'),
-        h('li', null, 'Send the request that was just inserted into the composer.'),
+        h('li', null, 'Check your files show as attached in the chat. If they do not, attach them yourself.'),
+        h('li', null, 'Press send.'),
         h('li', null, 'Review what was extracted below, fix anything, then save.')),
       h('button', { class: 'btn small', onclick: () => insertText(P.importRubricPrompt()) }, 'Insert the request again'));
     if (!pend) return [steps, h('div', { class: 'small muted' }, 'Waiting for the reply. It appears here automatically.')];
 
     if (!state.importDraft || state.importDraft.at !== pend.at) {
       state.importDraft = { at: pend.at, d: JSON.parse(JSON.stringify(pend.data.pack)), confirmed: false };
+      if (state.importIntent && state.importIntent.name) state.importDraft.d.name = state.importIntent.name;
     }
     const id = state.importDraft, d = id.d;
     const sum = d.criteria.reduce((a, c) => a + (Number(c.max) || 0), 0);
@@ -413,13 +467,14 @@
           p.rubric = d.criteria.map(c => ({ id: c.id, name: c.name, max: c.max, descriptor: c.descriptor || '' }));
           await savePack(p);
           await MFDB.setMeta('pendingImport', null);
-          state.importDraft = null;
+          await MFDB.setMeta('importIntent', null);
+          state.importDraft = null; state.importName = ''; state.importFiles = [];
           await load();
           go('pack');
           toast('Pack created. Add anchors next if you have marked examples.');
         }
       }, 'Save as new pack'),
-      h('button', { class: 'btn', onclick: async () => { await MFDB.setMeta('pendingImport', null); state.importDraft = null; await load(); } }, 'Discard')
+      h('button', { class: 'btn', onclick: async () => { await MFDB.setMeta('pendingImport', null); await MFDB.setMeta('importIntent', null); state.importDraft = null; await load(); } }, 'Discard')
     ];
   }
 
@@ -476,7 +531,7 @@
 
   // ---------- render ----------
   function render() {
-    const views = { home: homeView, pack: packView, markbook: markbookView, handover: handoverView, newpack: newPackView, import: importView };
+    const views = { home: homeView, pack: packView, markbook: markbookView, handover: handoverView, newpack: newPackView, import: importView, anchorfiles: anchorFilesView };
     const body = (views[state.view] || homeView)();
     const p = pack();
     root.replaceChildren(

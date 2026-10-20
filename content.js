@@ -64,8 +64,42 @@
     return document.execCommand('insertText', false, text);
   }
 
+  function toFile(f) {
+    const bin = atob(f.b64);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new File([u], f.name, { type: f.type });
+  }
+
+  // Best effort: set the page's own file input, else paste the files into the composer. Returns the method used, or null.
+  // We cannot confirm the page accepted them, so the panel asks the teacher to check before sending.
+  function attach(files) {
+    const dt = new DataTransfer();
+    files.forEach(f => dt.items.add(f));
+    const input = document.querySelector(S.fileInput);
+    if (input) {
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return 'input';
+    }
+    const el = document.querySelector(S.composer);
+    if (el) {
+      el.focus();
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return 'paste';
+    }
+    return null;
+  }
+
   chrome.runtime.onMessage.addListener((msg, _s, send) => {
-    if (msg && msg.type === 'INSERT_TEXT') { send({ ok: insert(msg.text) }); }
+    if (!msg) return false;
+    if (msg.type === 'INSERT_TEXT') { send({ ok: insert(msg.text) }); return false; }
+    if (msg.type === 'INSERT_FILES') {
+      let method = null;
+      try { method = attach((msg.files || []).map(toFile)); } catch (e) { method = null; }
+      setTimeout(() => send({ ok: insert(msg.text), attached: method }), 500); // let the page register the files first
+      return true;
+    }
     return false;
   });
 

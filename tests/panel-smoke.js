@@ -6,12 +6,12 @@ class N { constructor(t){this.tag=t;this.children=[];this.attrs={};this.listener
   click(){return Promise.all((this.listeners.click||[]).map(f=>f({target:this})));}
   get text(){return this.children.map(c=>c.text!==undefined?c.text:'').join(' ');}
   find(pred,out=[]){ if(pred(this)) out.push(this); this.children.forEach(c=>c.find&&c.find(pred,out)); return out; } }
-const appNode = new N('div'); const listeners = []; const inserted = [];
+const appNode = new N('div'); const listeners = []; const inserted = []; const messages = [];
 const sandbox = { console, setTimeout, Blob: class{}, URL:Object.assign(function(u){return new (require('url').URL)(u);},{createObjectURL:()=>'x',revokeObjectURL(){}}),
   document:{ getElementById:()=>appNode, createElement:t=>new N(t), createElementNS:(ns,t)=>new N(t), createTextNode:s=>({nodeType:3,text:String(s)}) },
-  navigator:{clipboard:{writeText:async()=>{}}}, location:{pathname:'/chat/x'} };
+  navigator:{clipboard:{writeText:async()=>{}}}, btoa, location:{pathname:'/chat/x'} };
 sandbox.chrome = { runtime:{onMessage:{addListener:f=>listeners.push(f)}, sendMessage:async()=>{}},
-  tabs:{query:async()=>[{id:1,url:'https://claude.ai/chat/x'}],onActivated:{addListener(){}},onUpdated:{addListener(){}},sendMessage:async(id,m)=>{inserted.push(m.text);return{ok:true};}},
+  tabs:{query:async()=>[{id:1,url:'https://claude.ai/chat/x'}],onActivated:{addListener(){}},onUpdated:{addListener(){}},sendMessage:async(id,m)=>{messages.push(m); if(m.type==='INSERT_TEXT') inserted.push(m.text); return m.type==='INSERT_FILES'?{ok:true,attached:'input'}:{ok:true};}},
   storage:{session:{get:async()=>({}),set:async()=>{}}} };
 sandbox.window = sandbox;
 const ctx = vm.createContext(sandbox);
@@ -31,10 +31,19 @@ const db = vm.runInContext('MFDB', ctx);
 
 (async () => {
   await sleep(50);
-  ok(/Import rubric from files/.test(text()) && /Build a pack by hand/.test(text()), 'first run offers import and manual build');
-
-  await btn('Import rubric from files').click(); await sleep(20);
-  ok(inserted.length===1 && inserted[0].includes('labelled mark-pack'), 'import inserts the rubric request into the composer');
+  ok(/Create your first pack/.test(text()), 'first run offers pack creation');
+  await btn('Create your first pack').click(); await sleep(20);
+  ok(/Send to chat/.test(text()) && /Create empty pack/.test(text()), 'new pack view offers files and an empty pack');
+  await btn('Send to chat').click(); await sleep(20);
+  ok(/Give the pack a name/.test(text()), 'sending requires a pack name');
+  appNode.find(n => n.tag==='input' && n.attrs['aria-label']==='Pack name')[0].listeners.input[0]({target:{value:'Year 11 DB'}});
+  await btn('Send to chat').click(); await sleep(20);
+  ok(/Choose your task sheet/.test(text()), 'sending requires files');
+  appNode.find(n => n.tag==='input' && n.attrs.type==='file')[0].listeners.change[0]({target:{files:[{name:'rubric.pdf',size:2048,type:'application/pdf',arrayBuffer:async()=>new Uint8Array([37,80,68,70]).buffer}]}}); await sleep(20);
+  ok(/rubric.pdf/.test(text()), 'chosen file is listed');
+  await btn('Send to chat').click(); await sleep(50);
+  const sent = messages[messages.length-1];
+  ok(sent && sent.type==='INSERT_FILES' && sent.files.length===1 && sent.files[0].b64==='JVBERg==' && sent.text.includes('labelled mark-pack'), 'files and request are pushed to the chat as base64 plus text');
   ok(/Waiting for the reply/.test(text()), 'import view waits for the reply');
 
   const imp = vm.runInContext(`MFParse.extract('{"name":"DB Task","task":"Design a DB","statedTotal":25,"criteria":[{"id":"C1","name":"Schema","max":10,"descriptor":"a"},{"id":"C2","name":"Queries","max":10,"descriptor":"b"}]}', null).imports[0]`, ctx);
@@ -46,7 +55,7 @@ const db = vm.runInContext('MFDB', ctx);
   appNode.find(n => n.tag==='input' && n.attrs.type==='checkbox')[0].listeners.change[0]({target:{checked:true}});
   await btn('Save as new pack').click(); await sleep(60);
   const packs = await db.getAll('packs');
-  ok(packs.length===1 && packs[0].rubric.length===2 && packs[0].name==='DB Task', 'confirmed import saves a pack with 2 criteria');
+  ok(packs.length===1 && packs[0].rubric.length===2 && packs[0].name==='Year 11 DB', 'confirmed import saves a pack with 2 criteria, named by the teacher');
   ok((await db.getMeta('pendingImport'))===null, 'pending import cleared after save');
 
   const pid = packs[0].id;
@@ -59,7 +68,11 @@ const db = vm.runInContext('MFDB', ctx);
 
   appNode.find(n => n.tag==='button' && n.text.trim()==='Pack')[0].click(); await sleep(20);
   await btn('Import').click(); await sleep(20);
-  ok(/Import anchors from marked scripts/.test(text()) && inserted[inserted.length-1].includes('labelled mark-handover'), 'anchors import inserts its request and shows its steps');
+  ok(/Import anchors from marked scripts/.test(text()) && /Send to chat/.test(text()), 'anchors import asks for files');
+  appNode.find(n => n.tag==='input' && n.attrs.type==='file')[0].listeners.change[0]({target:{files:[{name:'S06_17.pdf',size:1024,type:'application/pdf',arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer}]}}); await sleep(20);
+  await btn('Send to chat').click(); await sleep(50);
+  const sent2 = messages[messages.length-1];
+  ok(sent2.type==='INSERT_FILES' && sent2.text.includes('labelled mark-handover') && /Review the anchors below/.test(text()), 'anchor files and request are pushed, then the review view waits');
   await db.setMeta('pendingHandover', { packId: pid, at: 2, data: { pack: pid, rulings: [], anchors: [{student:'S06',score:17,note:'strong'}], notes: [] } });
   listeners.forEach(f => f({ type:'DB_CHANGED' })); await sleep(50);
   ok(/S06 \(17\): strong/.test(text()), 'anchor review shows student and score');

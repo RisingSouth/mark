@@ -16,6 +16,8 @@ const MF_SELECTORS = {
     'div.ProseMirror[contenteditable="true"]',
     'div[contenteditable="true"]'
   ].join(','),
+  // The (usually hidden) file input behind the attach button
+  fileInput: 'input[type="file"]',
   // Present while a reply is still streaming. Capture waits until it disappears.
   streaming: '[data-is-streaming="true"]'
 };

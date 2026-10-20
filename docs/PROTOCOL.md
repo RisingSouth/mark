@@ -48,7 +48,7 @@ Nothing from a handover is saved to the pack until the teacher reviews it and ch
 }
 ```
 
-Requested by **Import rubric from files**. The teacher attaches the task sheet and rubric to the chat; the reply is captured into a review screen and nothing is saved until the teacher accepts it.
+Requested by **Send to chat** on the new-pack screen. The panel attaches the teacher's files to the composer (best effort; the teacher checks they show as attached) and the teacher presses send. The reply is captured into a review screen and nothing is saved until the teacher accepts it.
 
 - Structural errors block saving: no criteria, duplicate or malformed IDs, missing names, `max` not a whole number from 1 to 100.
 - `statedTotal` is the total printed in the document. If it is missing, or differs from the sum of the criterion maxes, the review screen warns and the teacher must tick a confirmation before saving.

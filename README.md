@@ -16,7 +16,7 @@ MVP, v0.1. Built without access to a live browser, so the DOM selectors for the 
 
 ## First use
 
-1. Panel: **Import rubric from files**. Attach your task sheet and rubric (PDF or Word) to the chat, send the inserted request, then review and save what Claude extracted. (Or build a pack by hand.) For anchors, use **Import** in the Pack tab and attach a few marked scripts.
+1. Panel: **Create your first pack**. Name it, choose your task sheet and rubric (PDF or Word), and press **Send to chat**. The panel attaches the files and writes the request in the composer; you press send, then review and save what Claude extracted. (Or start with an empty pack.) For anchors, use **Import** in the Pack tab and choose a few marked scripts.
 2. Home: open **Set up your Claude Project**, copy the instructions into your Claude Project's instructions. Do this once.
 3. In a chat inside that Project: **Load pack**, press send. When Claude replies `READY ...` the panel shows *Chat configured*.
 4. Drop in a script, press **Mark**, press send. The reply's `mark` block is validated and saved; a green chip appears under the reply.
